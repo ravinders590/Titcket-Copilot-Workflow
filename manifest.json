@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Ticket Copilot",
+  "version": "1.1.0",
+  "description": "AI-powered ticket analysis: auto-detect type, break work into UI & dev tasks, generate Copilot skill files, and inject a Copilot button on every ticket.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://*.atlassian.net/*",
+    "https://github.com/*",
+    "https://linear.app/*",
+    "https://models.inference.ai.azure.com/*",
+    "https://api.github.com/*",
+    "https://api.figma.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.atlassian.net/browse/*",
+        "https://*.atlassian.net/jira/software/projects/*/issues/*",
+        "https://*.atlassian.net/jira/software/*/boards/*",
+        "https://github.com/*/issues/*",
+        "https://github.com/*/pull/*",
+        "https://linear.app/*/issue/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Ticket Copilot"
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

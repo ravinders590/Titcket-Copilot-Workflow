@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ticket Copilot — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <svg class="logo" viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+        <path d="M12 .5C5.37.5 0 5.78 0 12.292c0 5.211 3.438 9.63 8.205 11.188.6.111.82-.254.82-.567 0-.28-.01-1.022-.015-2.005-3.338.711-4.042-1.582-4.042-1.582-.546-1.361-1.333-1.723-1.333-1.723-1.09-.731.083-.716.083-.716 1.205.082 1.838 1.215 1.838 1.215 1.07 1.803 2.809 1.282 3.495.981.108-.763.417-1.282.76-1.577-2.665-.295-5.466-1.309-5.466-5.827 0-1.287.465-2.339 1.235-3.164-.135-.298-.54-1.497.105-3.121 0 0 1.005-.316 3.3 1.209A11.616 11.616 0 0 1 12 6.32c1.02.005 2.047.136 3.006.398 2.28-1.525 3.285-1.209 3.285-1.209.645 1.624.24 2.823.12 3.121.765.825 1.23 1.877 1.23 3.164 0 4.53-2.805 5.527-5.475 5.817.42.354.81 1.077.81 2.182 0 1.578-.015 2.846-.015 3.229 0 .309.21.678.825.56C20.565 21.917 24 17.495 24 12.292 24 5.78 18.627.5 12 .5z"/>
+      </svg>
+      <div>
+        <h1>Settings</h1>
+        <p class="subtitle">Configure API keys and analysis preferences</p>
+      </div>
+    </header>
+
+    <form id="settingsForm" autocomplete="off">
+
+      <!-- GitHub Copilot -->
+      <fieldset class="card">
+        <legend>GitHub Copilot</legend>
+
+        <div class="field">
+          <label for="githubToken">GitHub Personal Access Token <span class="required">*</span></label>
+          <div class="input-group">
+            <input id="githubToken" class="input" type="password"
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" spellcheck="false" />
+            <button type="button" id="toggleGHToken" class="icon-btn" title="Show / Hide">
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+                <path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.671 13.008 9.981 14 8 14s-3.671-.992-4.933-2.078C1.797 10.831.88 9.577.43 8.899a1.62 1.62 0 0 1 0-1.798c.45-.678 1.367-1.932 2.637-3.023C4.329 2.992 6.019 2 8 2M1.679 7.932a.12.12 0 0 0 0 .136c.411.622 1.241 1.75 2.366 2.717C5.176 11.758 6.527 12.5 8 12.5s2.824-.742 3.955-1.715c1.124-.967 1.954-2.096 2.366-2.717a.12.12 0 0 0 0-.136c-.412-.621-1.242-1.75-2.366-2.717C10.824 4.242 9.473 3.5 8 3.5s-2.824.742-3.955 1.715c-1.124.967-1.954 2.096-2.366 2.717M8 10a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 10"/>
+              </svg>
+            </button>
+          </div>
+          <small class="hint">
+            Used to call the GitHub Models API (powers GitHub Copilot).
+            No OpenAI account needed. Requires a GitHub account with Copilot access.
+            <a href="https://github.com/settings/tokens/new?description=Ticket+Copilot" target="_blank" rel="noopener">Create token</a>
+          </small>
+        </div>
+
+        <div class="field">
+          <label for="aiModel">AI Model</label>
+          <select id="aiModel" class="input">
+            <option value="gpt-4o">GPT-4o (recommended)</option>
+            <option value="gpt-4o-mini">GPT-4o Mini (faster)</option>
+            <option value="o1">o1</option>
+            <option value="o1-mini">o1 Mini</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <!-- Figma (optional) -->
+      <fieldset class="card">
+        <legend>Figma <span class="optional-tag">optional</span></legend>
+
+        <div class="field">
+          <label for="figmaToken">Personal Access Token</label>
+          <div class="input-group">
+            <input id="figmaToken" class="input" type="password"
+              placeholder="figd_xxxxxxxxxxxxxxxxxxxx" spellcheck="false" />
+            <button type="button" id="toggleFigmaKey" class="icon-btn" title="Show / Hide">
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+                <path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.671 13.008 9.981 14 8 14s-3.671-.992-4.933-2.078C1.797 10.831.88 9.577.43 8.899a1.62 1.62 0 0 1 0-1.798c.45-.678 1.367-1.932 2.637-3.023C4.329 2.992 6.019 2 8 2M1.679 7.932a.12.12 0 0 0 0 .136c.411.622 1.241 1.75 2.366 2.717C5.176 11.758 6.527 12.5 8 12.5s2.824-.742 3.955-1.715c1.124-.967 1.954-2.096 2.366-2.717a.12.12 0 0 0 0-.136c-.412-.621-1.242-1.75-2.366-2.717C10.824 4.242 9.473 3.5 8 3.5s-2.824.742-3.955 1.715c-1.124.967-1.954 2.096-2.366 2.717M8 10a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 10"/>
+              </svg>
+            </button>
+          </div>
+          <small class="hint">
+            Enables fetching Figma component data from linked designs.
+            <a href="https://www.figma.com/developers/api#access-tokens" target="_blank" rel="noopener">Create token</a>
+          </small>
+        </div>
+      </fieldset>
+
+      <!-- Platforms -->
+      <fieldset class="card">
+        <legend>Supported Platforms</legend>
+        <div class="checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="platformJira" checked />
+            <span class="checkbox-custom"></span>
+            Jira Cloud (<code>*.atlassian.net</code>)
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="platformGitHub" checked />
+            <span class="checkbox-custom"></span>
+            GitHub Issues &amp; Pull Requests
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="platformLinear" checked />
+            <span class="checkbox-custom"></span>
+            Linear Issues
+          </label>
+        </div>
+        <small class="hint">Reloading the extension is required after changing this.</small>
+      </fieldset>
+
+      <!-- Linked GitHub Repository -->
+      <fieldset class="card">
+        <legend>GitHub Repository <span class="optional-tag">for Jira / Linear</span></legend>
+        <div class="field">
+          <label for="linkedRepo">Repository (owner/repo)</label>
+          <input id="linkedRepo" class="input" type="text"
+            placeholder="e.g. myorg/my-repo" spellcheck="false" autocomplete="off" />
+          <small class="hint">
+            Used by the Workflows tab when the active ticket is on Jira or Linear (not GitHub).
+            Format: <code>owner/repo</code> — e.g. <code>acme/backend-api</code>
+          </small>
+        </div>
+      </fieldset>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+            <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0"/>
+          </svg>
+          Save Settings
+        </button>
+        <button type="button" id="btnTestKey" class="btn btn-outline">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor">
+            <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0M1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0m4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.442a.25.25 0 0 1 .379-.215"/>
+          </svg>
+          Test API Key
+        </button>
+      </div>
+
+      <div id="status" class="status hidden"></div>
+    </form>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
