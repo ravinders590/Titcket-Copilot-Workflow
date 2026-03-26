@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ticket Copilot</title>
+  <title>Ticket Analyser</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
@@ -14,7 +14,7 @@
       <svg class="logo" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
         <path d="M12 .5C5.37.5 0 5.78 0 12.292c0 5.211 3.438 9.63 8.205 11.188.6.111.82-.254.82-.567 0-.28-.01-1.022-.015-2.005-3.338.711-4.042-1.582-4.042-1.582-.546-1.361-1.333-1.723-1.333-1.723-1.09-.731.083-.716.083-.716 1.205.082 1.838 1.215 1.838 1.215 1.07 1.803 2.809 1.282 3.495.981.108-.763.417-1.282.76-1.577-2.665-.295-5.466-1.309-5.466-5.827 0-1.287.465-2.339 1.235-3.164-.135-.298-.54-1.497.105-3.121 0 0 1.005-.316 3.3 1.209A11.616 11.616 0 0 1 12 6.32c1.02.005 2.047.136 3.006.398 2.28-1.525 3.285-1.209 3.285-1.209.645 1.624.24 2.823.12 3.121.765.825 1.23 1.877 1.23 3.164 0 4.53-2.805 5.527-5.475 5.817.42.354.81 1.077.81 2.182 0 1.578-.015 2.846-.015 3.229 0 .309.21.678.825.56C20.565 21.917 24 17.495 24 12.292 24 5.78 18.627.5 12 .5z"/>
       </svg>
-      <h1 class="header-title">Ticket Copilot</h1>
+      <h1 class="header-title">Ticket Analyser</h1>
     </div>
     <button id="btnSettings" class="icon-btn" title="Settings">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -30,7 +30,7 @@
         <path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"/>
       </svg>
       <p class="no-ticket-title">No ticket detected</p>
-      <p class="no-ticket-sub">Open Ticket Copilot on a supported ticket page:</p>
+      <p class="no-ticket-sub">Open Ticket Analyser on a supported ticket page:</p>
       <ul class="platform-list">
         <li>Jira Cloud (<code>*.atlassian.net</code>)</li>
         <li>GitHub Issues &amp; Pull Requests</li>
@@ -111,6 +111,32 @@
 
     <!-- Skill File pane -->
     <div class="pane hidden" id="pane-skill">
+      <!-- Detected codebase section -->
+      <div id="codebaseSection" class="codebase-section hidden">
+        <div class="codebase-header">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="#8b949e"><path d="M4.72 3.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L7.44 7 4.72 4.28a.75.75 0 0 1 0-1.06m4.25 7.5a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75"/></svg>
+          <span class="codebase-title">Detected Tech Stack</span>
+        </div>
+        <div id="codebaseInfo" class="codebase-info"></div>
+      </div>
+
+      <!-- Repo skill files section -->
+      <div id="repoSkillsSection" class="repo-skills-section hidden">
+        <div class="repo-skills-header">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="#8b949e"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8z"/></svg>
+          <span class="repo-skills-title">Repo Skill Files</span>
+        </div>
+        <div id="repoSkillsList" class="repo-skills-list"></div>
+      </div>
+
+      <!-- Generated skill file -->
+      <div class="skill-generated-header">
+        <span class="section-label">Generated Skill File</span>
+        <button class="btn btn-sm btn-outline" id="btnRegenerateSkill" title="Regenerate skill file">
+          <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/></svg>
+          Regenerate
+        </button>
+      </div>
       <div class="skill-bar">
         <span class="skill-filename" id="skillFilename"></span>
         <span id="skillSourceBadge" class="skill-source-badge hidden"></span>
@@ -203,9 +229,11 @@
 
           <!-- Success banner -->
           <div id="issueCreatedBanner" class="issue-created-banner hidden">
-            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="color:var(--green);flex-shrink:0"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.749.749 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
-            <span>Issue created: </span>
-            <a id="issueCreatedLink" href="#" target="_blank" rel="noopener noreferrer"></a>
+            <div class="issue-created-top">
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" style="color:var(--green);flex-shrink:0"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.749.749 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+              <span>Issue created: </span>
+              <a id="issueCreatedLink" href="#" target="_blank" rel="noopener noreferrer"></a>
+            </div>
           </div>
 
           <!-- Open Issues list -->

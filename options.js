@@ -1,5 +1,5 @@
 /* ================================================================
-   Ticket Copilot — Options Page Logic
+   Ticket Analyser — Options Page Logic
    ================================================================ */
 
 document.addEventListener('DOMContentLoaded', () => {

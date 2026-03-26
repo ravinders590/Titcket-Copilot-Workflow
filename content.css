@@ -1,5 +1,5 @@
 /* ================================================================
-   Ticket Copilot — Content CSS
+   Ticket Analyser — Content CSS
    Styles for injected elements (FAB, sidebar panel, toast).
    All selectors are scoped with #tc-* or .tc-* to avoid
    conflicts with host-page styles.
@@ -72,33 +72,51 @@
 /* ── Sidebar Panel ─────────────────────────────────────────── */
 #tc-panel {
   position: fixed;
-  top: 0;
-  right: -420px;
+  top: 60px;
+  right: 20px;
   width: 400px;
-  height: 100vh;
+  height: 80vh;
+  min-width: 320px;
+  min-height: 300px;
+  max-width: 90vw;
+  max-height: 95vh;
   background: var(--tc-bg);
-  border-left: 1px solid var(--tc-border);
+  border: 1px solid var(--tc-border);
+  border-radius: 12px;
   z-index: 2147483630;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: var(--tc-shadow);
-  transition: right .3s cubic-bezier(.4,0,.2,1);
+  transition: opacity .25s ease, transform .25s ease;
+  opacity: 0;
+  transform: scale(.96) translateY(8px);
+  pointer-events: none;
   color: var(--tc-text);
   font-size: 13px;
+  resize: both;
 }
-#tc-panel.tc-panel--open { right: 0; }
+#tc-panel.tc-panel--open {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
 
-/* ── Panel Header ──────────────────────────────────────────── */
+/* ── Panel Header (draggable) ──────────────────────────────── */
 .tc-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: var(--tc-bg2);
   border-bottom: 1px solid var(--tc-border);
+  border-radius: 12px 12px 0 0;
   flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
 }
+.tc-panel-header:active { cursor: grabbing; }
+.tc-panel-header .tc-icon-btn { cursor: pointer; }
 .tc-panel-logo {
   display: flex;
   align-items: center;
@@ -403,6 +421,75 @@
 }
 
 /* ── Skill File Pane ───────────────────────────────────────── */
+
+/* Repo skill files */
+.tc-repo-skills-section {
+  margin-bottom: 14px;
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-r-md);
+  overflow: hidden;
+}
+.tc-repo-skills-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--tc-bg-card);
+  border-bottom: 1px solid var(--tc-border);
+}
+.tc-repo-skills-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tc-text2);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.tc-repo-skill-item {
+  border-bottom: 1px solid var(--tc-border);
+}
+.tc-repo-skill-item:last-child { border-bottom: none; }
+.tc-repo-skill-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--tc-blue);
+  cursor: pointer;
+  user-select: none;
+}
+.tc-repo-skill-path:hover { background: rgba(88,166,255,.06); }
+.tc-repo-skill-content {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 10px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--tc-text2);
+  background: var(--tc-bg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  max-height: 200px;
+  line-height: 1.5;
+  border-top: 1px solid var(--tc-border);
+}
+
+/* Generated skill header */
+.tc-skill-gen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.tc-skill-gen-header .tc-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tc-text2);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
 .tc-skill-bar {
   display: flex;
   align-items: center;
@@ -972,8 +1059,8 @@
 /* Created banner */
 .tc-gh-issue-created {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 10px;
   background: rgba(63,185,80,.08);
   border: 1px solid rgba(63,185,80,.25);
@@ -981,6 +1068,11 @@
   font-size: 12px;
   color: var(--tc-text2);
   margin: 6px 0 8px;
+}
+.tc-issue-created-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .tc-gh-issue-created-link {
   color: var(--tc-blue);
@@ -991,3 +1083,62 @@
   white-space: nowrap;
 }
 .tc-gh-issue-created-link:hover { text-decoration: underline; }
+
+/* Codebase Detection */
+.tc-codebase-section {
+  background: rgba(88,166,255,.06);
+  border: 1px solid rgba(88,166,255,.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.tc-codebase-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.tc-codebase-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.tc-codebase-info { display: flex; flex-direction: column; gap: 6px; }
+.tc-cb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tc-cb-label {
+  font-size: 10px;
+  color: #8b949e;
+  min-width: 100px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.tc-cb-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tc-cb-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.tc-cb-tag small { opacity: .65; font-size: 9px; }
+.tc-cb-tag--lang {
+  background: rgba(139,148,158,.12);
+  color: #c9d1d9;
+  border: 1px solid rgba(139,148,158,.2);
+}
+.tc-cb-tag--fw {
+  background: rgba(88,166,255,.1);
+  color: #58a6ff;
+  border: 1px solid rgba(88,166,255,.2);
+}
+.tc-cb-tag--ft {
+  background: rgba(63,185,80,.08);
+  color: #3fb950;
+  border: 1px solid rgba(63,185,80,.15);
+}
+
+

@@ -1,5 +1,5 @@
 /* ================================================================
-   Ticket Copilot — Background Service Worker
+   Ticket Analyser — Background Service Worker
    Handles: AI analysis (GitHub Models API), Figma API, option page routing
    Uses: https://models.inference.ai.azure.com — authenticated with
          a GitHub Personal Access Token (no OpenAI key required).
@@ -42,6 +42,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const { owner, repo, token, issueData } = msg.payload;
     createGitHubIssue(owner, repo, token, issueData)
       .then((issue) => sendResponse({ issue }))
+      .catch((err) => sendResponse({ error: err.message }));
+    return true;
+  }
+
+  if (msg.type === 'DETECT_CODEBASE') {
+    const { owner, repo, token } = msg.payload;
+    detectCodebase(owner, repo, token)
+      .then((info) => sendResponse({ codebase: info }))
       .catch((err) => sendResponse({ error: err.message }));
     return true;
   }
@@ -122,15 +130,21 @@ async function handleAnalysis(ticketData, forceRefresh = false) {
 
   // Auto-fetch skill files from repo if we have enough info
   let repoSkillFiles = [];
+  let codebaseInfo = null;
   if (owner && repo) {
-    repoSkillFiles = await fetchRepoSkillFiles(owner, repo, githubToken);
+    [repoSkillFiles, codebaseInfo] = await Promise.all([
+      fetchRepoSkillFiles(owner, repo, githubToken),
+      detectCodebase(owner, repo, githubToken),
+    ]);
   }
 
-  const analysis = await analyzeWithAI(ticketData, figmaDesigns, githubToken, aiModel, repoSkillFiles, owner, repo);
+  const analysis = await analyzeWithAI(ticketData, figmaDesigns, githubToken, aiModel, repoSkillFiles, owner, repo, codebaseInfo);
   // Annotate with resolved repo info for the popup to use
   analysis._owner = owner;
   analysis._repo = repo;
   analysis._repoSkillFilesLoaded = repoSkillFiles.length > 0;
+  analysis._repoSkillFiles = repoSkillFiles; // pass actual files to UI
+  analysis._codebase = codebaseInfo; // pass detected tech stack to UI
 
   // Store fresh result in cache
   await setCachedAnalysis(cacheKey, analysis);
@@ -203,6 +217,139 @@ async function fetchRepoSkillFiles(owner, repo, token) {
   return files;
 }
 
+// ── Detect codebase tech stack from repo ─────────────────────
+async function detectCodebase(owner, repo, token) {
+  if (!owner || !repo || !token) return null;
+
+  // Fetch language breakdown
+  const languages = await ghApiGet(`/repos/${owner}/${repo}/languages`, token) || {};
+  const totalBytes = Object.values(languages).reduce((a, b) => a + b, 0) || 1;
+  const langBreakdown = Object.entries(languages)
+    .sort((a, b) => b[1] - a[1])
+    .map(([lang, bytes]) => ({ lang, pct: Math.round((bytes / totalBytes) * 100) }));
+
+  // Fetch root tree to identify frameworks, config files, package managers
+  const rootFiles = await ghApiGet(`/repos/${owner}/${repo}/contents/`, token) || [];
+  const rootNames = Array.isArray(rootFiles) ? rootFiles.map((f) => f.name) : [];
+
+  // Detect frameworks, tools, and config
+  const markers = {
+    'package.json': 'Node.js / npm',
+    'yarn.lock': 'Yarn',
+    'pnpm-lock.yaml': 'pnpm',
+    'tsconfig.json': 'TypeScript',
+    'next.config.js': 'Next.js',
+    'next.config.mjs': 'Next.js',
+    'next.config.ts': 'Next.js',
+    'nuxt.config.js': 'Nuxt.js',
+    'nuxt.config.ts': 'Nuxt.js',
+    'angular.json': 'Angular',
+    'vue.config.js': 'Vue.js',
+    'vite.config.js': 'Vite',
+    'vite.config.ts': 'Vite',
+    'webpack.config.js': 'Webpack',
+    'tailwind.config.js': 'Tailwind CSS',
+    'tailwind.config.ts': 'Tailwind CSS',
+    'postcss.config.js': 'PostCSS',
+    '.eslintrc.js': 'ESLint',
+    '.eslintrc.json': 'ESLint',
+    'eslint.config.js': 'ESLint',
+    '.prettierrc': 'Prettier',
+    'jest.config.js': 'Jest',
+    'jest.config.ts': 'Jest',
+    'vitest.config.ts': 'Vitest',
+    'cypress.config.js': 'Cypress',
+    'playwright.config.ts': 'Playwright',
+    'Dockerfile': 'Docker',
+    'docker-compose.yml': 'Docker Compose',
+    'docker-compose.yaml': 'Docker Compose',
+    'Cargo.toml': 'Rust / Cargo',
+    'go.mod': 'Go',
+    'requirements.txt': 'Python / pip',
+    'pyproject.toml': 'Python',
+    'setup.py': 'Python',
+    'Pipfile': 'Python / Pipenv',
+    'Gemfile': 'Ruby / Bundler',
+    'build.gradle': 'Java / Gradle',
+    'build.gradle.kts': 'Kotlin / Gradle',
+    'pom.xml': 'Java / Maven',
+    'composer.json': 'PHP / Composer',
+    'pubspec.yaml': 'Flutter / Dart',
+    '.github': 'GitHub Actions',
+    'Makefile': 'Make',
+    'CMakeLists.txt': 'CMake',
+    '.env.example': 'Environment config',
+    'prisma': 'Prisma ORM',
+    'drizzle.config.ts': 'Drizzle ORM',
+    'manifest.json': 'Chrome Extension / Web Manifest',
+  };
+
+  const detected = [];
+  for (const name of rootNames) {
+    if (markers[name]) detected.push(markers[name]);
+  }
+
+  // Try reading package.json for deeper framework detection
+  let packageInfo = null;
+  if (rootNames.includes('package.json')) {
+    const pkgData = await ghApiGet(`/repos/${owner}/${repo}/contents/package.json`, token);
+    if (pkgData?.content && pkgData.encoding === 'base64') {
+      try {
+        const pkgJson = JSON.parse(atob(pkgData.content.replace(/\n/g, '')));
+        packageInfo = {
+          name: pkgJson.name || '',
+          scripts: Object.keys(pkgJson.scripts || {}),
+        };
+        const allDeps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
+        const fwDetect = {
+          react: 'React', 'react-dom': 'React', 'next': 'Next.js',
+          vue: 'Vue.js', nuxt: 'Nuxt.js', '@angular/core': 'Angular',
+          svelte: 'Svelte', '@sveltejs/kit': 'SvelteKit',
+          express: 'Express.js', fastify: 'Fastify', 'koa': 'Koa',
+          'nest': 'NestJS', '@nestjs/core': 'NestJS',
+          tailwindcss: 'Tailwind CSS', prisma: 'Prisma',
+          drizzle: 'Drizzle ORM', mongoose: 'Mongoose',
+          sequelize: 'Sequelize', typeorm: 'TypeORM',
+          jest: 'Jest', vitest: 'Vitest', mocha: 'Mocha',
+          cypress: 'Cypress', playwright: 'Playwright',
+          storybook: 'Storybook', '@storybook/react': 'Storybook',
+          electron: 'Electron', 'react-native': 'React Native',
+          expo: 'Expo', redux: 'Redux', '@reduxjs/toolkit': 'Redux Toolkit',
+          zustand: 'Zustand', mobx: 'MobX',
+          graphql: 'GraphQL', '@apollo/client': 'Apollo GraphQL',
+          trpc: 'tRPC', '@trpc/server': 'tRPC',
+          socket: 'Socket.io', 'socket.io': 'Socket.io',
+        };
+        for (const [dep, label] of Object.entries(fwDetect)) {
+          if (allDeps[dep]) detected.push(label);
+        }
+      } catch { /* malformed package.json */ }
+    }
+  }
+
+  // Deduplicate
+  const stack = [...new Set(detected)];
+
+  // Determine primary language
+  const primaryLang = langBreakdown[0]?.lang || 'Unknown';
+
+  // File type summary from root
+  const fileTypes = rootNames
+    .filter((n) => n.includes('.'))
+    .map((n) => '.' + n.split('.').pop())
+    .filter((ext, i, arr) => arr.indexOf(ext) === i)
+    .slice(0, 15);
+
+  return {
+    primaryLanguage: primaryLang,
+    languages: langBreakdown.slice(0, 8),
+    stack,
+    fileTypes,
+    packageInfo,
+    rootFiles: rootNames.slice(0, 30),
+  };
+}
+
 // ── Create a GitHub issue ─────────────────────────────────────
 async function createGitHubIssue(owner, repo, token, issueData) {
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
@@ -232,7 +379,7 @@ async function createGitHubIssue(owner, repo, token, issueData) {
 // Endpoint: https://models.inference.ai.azure.com/chat/completions
 // Auth:     GitHub Personal Access Token (ghp_* or github_pat_*)
 // Docs:     https://docs.github.com/en/github-models
-async function analyzeWithAI(ticketData, figmaDesigns, apiKey, model, repoSkillFiles = [], owner = '', repo = '') {
+async function analyzeWithAI(ticketData, figmaDesigns, apiKey, model, repoSkillFiles = [], owner = '', repo = '', codebaseInfo = null) {
   const figmaContext = figmaDesigns.length
     ? '\n\nFigma Design Info:\n' +
       figmaDesigns
@@ -252,8 +399,18 @@ async function analyzeWithAI(ticketData, figmaDesigns, apiKey, model, repoSkillF
 
   const repoRef = owner && repo ? `${owner}/${repo}` : 'N/A';
 
+  const codebaseContext = codebaseInfo
+    ? '\n\nDetected Codebase Tech Stack (CRITICAL — use these to generate framework-specific, idiomatic code and skill files):\n' +
+      `- Primary Language: ${codebaseInfo.primaryLanguage}\n` +
+      (codebaseInfo.languages.length ? `- Languages: ${codebaseInfo.languages.map((l) => `${l.lang} (${l.pct}%)`).join(', ')}\n` : '') +
+      (codebaseInfo.stack.length ? `- Frameworks & Tools: ${codebaseInfo.stack.join(', ')}\n` : '') +
+      (codebaseInfo.fileTypes.length ? `- File Types: ${codebaseInfo.fileTypes.join(', ')}\n` : '') +
+      (codebaseInfo.packageInfo?.scripts?.length ? `- Available Scripts: ${codebaseInfo.packageInfo.scripts.join(', ')}\n` : '') +
+      '\nYou MUST write all code suggestions, Architecture & Approach, and skillFileContent using the detected frameworks and language. For example: if React is detected, use React components/hooks; if Next.js, use App Router patterns; if Express, use Express middleware; if TypeScript is detected, all code MUST be TypeScript with proper types. Never use a framework not in the detected stack.\n'
+    : '';
+
   const systemPrompt =
-    'You are an expert software development assistant. Analyze product tickets and produce structured task breakdowns. Always respond with valid JSON only.';
+    'You are an expert software development assistant who produces precise, actionable skill files for GitHub Copilot agents. Analyze product tickets and produce structured task breakdowns. When a detected tech stack is provided, you MUST generate all code, architecture, and skill files using those specific frameworks and languages — never use generic or mismatched technologies. Always respond with valid JSON only.';
 
   const commentsContext = ticketData.comments?.length
     ? '\n\nComments (' + ticketData.comments.length + ' total — treat as additional requirements, clarifications, or bug evidence):\n' +
@@ -274,26 +431,91 @@ Ticket Data:
 - Reported Type: ${ticketData.type || 'Unknown'}
 - Description: ${ticketData.description || 'None'}
 - Scope: ${ticketData.scope || 'Not defined — skip scope processing'}
+- Key Details (General): ${ticketData.keyDetails || 'None'}
+- QA Acceptance Criteria: ${ticketData.qaAcceptance || 'None'}
 - Developer Notes: ${ticketData.devNotes || 'None'}
 - Figma URLs: ${ticketData.figmaUrls?.join(', ') || 'None'}
 - GitHub Repository: ${repoRef}
-- Attachment Images: ${ticketData.images?.length ? `${ticketData.images.length} image(s) provided below — analyze for UI designs, error states, or bug evidence` : 'None'}${figmaContext}${skillContext}${commentsContext}
+- Attachment Images: ${ticketData.images?.length ? `${ticketData.images.length} image(s) provided below — analyze for UI designs, error states, or bug evidence` : 'None'}${figmaContext}${skillContext}${codebaseContext}${commentsContext}
 
 Rules:
 1. Determine the actual ticket type from context (bug, feature, improvement, documentation, chore, refactor).
 2. If scope is empty, skip scope analysis and proceed directly using dev notes.
 3. Analyze dev notes to determine what type of feature/fix should be implemented (featureType).
-4. If Figma designs are present, populate uiTasks from design requirements; otherwise infer UI tasks from description.
-5. devTasks must cover backend, data, integration, and testing concerns.
-6. Provide at least 3 tasks per category when enough context exists.
-7. skillFileName must be kebab-case (no extension).
-8. If repository skill/instruction files are provided, use them as context to produce a skillFileContent that aligns with the project's existing conventions; otherwise generate a default skill file.
-9. skillFileContent must be a complete Markdown skill file usable by a GitHub Copilot agent, with YAML front matter (applyTo: '**').
-10. suggestions must contain 2-4 code snippet ideas relevant to the ticket; each with a title, language, description, and code string.
-11. suggestedBranch must follow: {prefix}/{ticket-id}-{short-kebab-title}. Prefix rules: feat/ for feature/improvement, fix/ for bug, docs/ for documentation, chore/ for chore, refactor/ for refactor. Use only lowercase letters and hyphens (e.g. feat/TC-123-add-login-button, fix/BUG-42-null-pointer-crash).
-12. issueBody must be a complete GitHub-flavored Markdown issue body containing: a ### Summary section, a ### Tasks checklist (all uiTasks and devTasks as - [ ] items), a ### Acceptance Criteria section, and a ### Technical Notes section. Assign @github-copilot to help with implementation.
-13. If comments are provided, incorporate them as additional acceptance criteria, clarifications, or bug evidence into the analysis.
-14. If attachment images are included (listed above and sent below as image inputs), analyze each for UI mockups, wireframes, error screenshots, or design specs and incorporate visual insights into tasks, summary, featureType, and skillFileContent.
+4. If Key Details (General) are provided, use them as primary context for understanding the ticket's purpose, requirements, and constraints. These details define the core of what needs to be done.
+5. If QA Acceptance Criteria are provided, use them to define acceptance criteria, validation rules, and testing expectations. These MUST be reflected in devTasks (as testing/validation tasks) and in the skillFileContent's Implementation Guide.
+6. If Figma designs are present, populate uiTasks from design requirements; otherwise infer UI tasks from description.
+7. devTasks must cover backend, data, integration, and testing concerns.
+8. Provide at least 3 tasks per category when enough context exists.
+9. skillFileName must be kebab-case (no extension).
+10. If repository skill/instruction files are provided, use them as context to produce a skillFileContent that aligns with the project's existing conventions; otherwise generate a default skill file. If Detected Codebase Tech Stack is provided, this is the HIGHEST priority context — you MUST:
+   a) Write ALL code suggestions using the detected primary language and frameworks (e.g. TypeScript + React, Python + FastAPI, Go + gin).
+   b) Reference detected tools in the Constraints & Rules section (e.g. "Use Prisma for database queries", "Style with Tailwind CSS classes", "Run tests with Vitest").
+   c) In Architecture & Approach, describe the implementation using the detected project structure and patterns.
+   d) In Testing Strategy, reference the detected test framework (Jest, Vitest, Cypress, Playwright, etc.).
+   e) All suggestions must use detected file extensions (e.g. .tsx for React+TypeScript, .vue for Vue, .py for Python).
+11. skillFileContent must be a complete, production-ready Markdown skill file that a GitHub Copilot agent can use to implement the ticket end-to-end WITHOUT needing to read the original ticket. Use YAML front matter (applyTo: '**'). Structure MUST follow this exact layout:
+
+   # {Ticket Title}
+
+   ## Ticket
+   - **ID**: (ticket ID)
+   - **Title**: (exact ticket title)
+   - **Type**: (bug / feature / improvement / etc.)
+   - **Complexity**: (low / medium / high)
+   - **Description**: (a thorough description synthesized from: ticket description, key details, dev notes, comments, and any visual information extracted from attached images. Be specific — mention exact field names, endpoints, component names, error messages, or UI elements.)
+
+   ## Constraints & Rules
+   (List specific technical constraints, business rules, and boundaries. E.g. "Must use async/await", "Do not modify the auth middleware", "Response time must be < 200ms". Derive these from dev notes, key details, scope, and QA criteria.)
+
+   ## Architecture & Approach
+   (Describe the recommended implementation approach: which files to modify, which patterns to follow, which services/layers are involved. Reference existing repo conventions if repo skill files were provided.)
+
+   ## Tasks
+   ### UI Tasks
+   (List each UI task as: - **{ID} {Title}** [{priority}]: {description})
+   ### Dev Tasks
+   (List each dev task as: - **{ID} {Title}** [{priority}]: {description})
+
+   ## QA Acceptance
+   (If QA acceptance criteria are available, list every criterion verbatim then add any inferred criteria. If not available, derive acceptance criteria from the ticket requirements. Each criterion should be testable and specific.)
+
+   ## Edge Cases & Pitfalls
+   (List 2-5 edge cases, error scenarios, or common pitfalls the developer should handle. E.g. "Empty state when no data returned", "Race condition if user navigates away during save", "Token expiry mid-request".)
+
+   ## Testing Strategy
+   (Describe what tests to write: unit tests, integration tests, manual test steps. Reference the QA acceptance criteria.)
+
+   ## References
+   (Ticket URL, Figma links, related docs.)
+12. suggestions must contain 2-4 code snippet ideas relevant to the ticket; each with a title, language, description, and code string. The language field MUST match the primary detected language (e.g. "typescript" not "javascript" if TypeScript is detected). All code MUST use the detected frameworks — for example, if React is detected, show React component code; if NestJS is detected, show NestJS controller/service code. Never provide generic code when the tech stack is known.
+13. suggestedBranch must follow: {prefix}/{ticket-id}-{short-kebab-title}. Prefix rules: feat/ for feature/improvement, fix/ for bug, docs/ for documentation, chore/ for chore, refactor/ for refactor. Use only lowercase letters and hyphens (e.g. feat/TC-123-add-login-button, fix/BUG-42-null-pointer-crash).
+14. issueBody must be a complete GitHub-flavored Markdown issue body that mirrors the skill file structure so the issue and skill file stay in sync. It MUST contain these sections in order:
+   ### Summary
+   (2-3 sentence overview of what this ticket requires.)
+   ### Ticket Context
+   - **Type**: bug/feature/improvement/etc.
+   - **Complexity**: low/medium/high
+   - **Feature**: featureType one-liner
+   - **Key Details**: key details if provided, otherwise omit
+   ### Constraints & Rules
+   (Bullet list of technical constraints, business rules, and boundaries derived from dev notes, scope, and QA criteria.)
+   ### Tasks
+   **UI Tasks**
+   (Each UI task as - [ ] **{ID} {Title}** [{priority}]: {description})
+   **Dev Tasks**
+   (Each dev task as - [ ] **{ID} {Title}** [{priority}]: {description})
+   ### QA Acceptance
+   (QA acceptance criteria as a checklist. Use QA criteria from the ticket if provided; otherwise derive from requirements.)
+   ### Edge Cases
+   (2-5 edge cases or pitfalls as bullet items.)
+   ### Testing Strategy
+   (Unit tests, integration tests, manual steps.)
+   ### References
+   (Ticket URL, Figma links, suggested branch in backticks.)
+   > This issue was generated by Ticket Analyser. Assign @github-copilot for AI-assisted implementation.
+15. If comments are provided, incorporate them as additional acceptance criteria, clarifications, or bug evidence into the analysis.
+16. If attachment images are included (listed above and sent below as image inputs), analyze each for UI mockups, wireframes, error screenshots, error messages, stack traces, console logs, or design specs. Determine whether each image shows an error/bug (identify the error type, message, and likely root cause) or a feature/design (identify UI elements, layout, interactions). Incorporate ALL visual insights into tasks, summary, featureType, and especially into the skillFileContent — the skill file's Ticket Description and Implementation Guide must reflect what was observed in the images so the Copilot agent has full visual context even without seeing the images.
 
 Respond with a JSON object matching this schema exactly:
 {
@@ -415,13 +637,13 @@ async function buildSkillFile(analysis, ticketData) {
 function buildDefaultSkillFile(analysis, ticketData) {
   const uiList =
     (analysis.uiTasks || [])
-      .map((t) => `- [ ] **${t.title}**: ${t.description}`)
-      .join('\n') || '- [ ] No UI tasks defined';
+      .map((t) => `- **${t.id} ${t.title}** [${t.priority || 'medium'}]: ${t.description}`)
+      .join('\n') || '- No UI tasks defined';
 
   const devList =
     (analysis.devTasks || [])
-      .map((t) => `- [ ] **${t.title}**: ${t.description}`)
-      .join('\n') || '- [ ] No dev tasks defined';
+      .map((t) => `- **${t.id} ${t.title}** [${t.priority || 'medium'}]: ${t.description}`)
+      .join('\n') || '- No dev tasks defined';
 
   const figmaLinks =
     ticketData.figmaUrls?.length
@@ -438,27 +660,44 @@ applyTo: '**'
 ---
 # ${ticketData.title || 'Feature Implementation'}
 
-## Overview
-**Ticket**: ${ticketData.id || 'N/A'}  
-**Type**: ${analysis.ticketType}  
-**Complexity**: ${analysis.complexity}  
+## Ticket
+- **ID**: ${ticketData.id || 'N/A'}
+- **Title**: ${ticketData.title || 'Untitled'}
+- **Type**: ${analysis.ticketType}
+- **Complexity**: ${analysis.complexity}
+- **Description**: ${ticketData.description || analysis.summary || 'No description provided.'}
+
+## Constraints & Rules
+${ticketData.devNotes ? `- Developer Notes: ${ticketData.devNotes}` : '- Follow existing project conventions'}
+${ticketData.scope ? `- Scope: ${ticketData.scope}` : ''}
+
+## Architecture & Approach
 **Feature**: ${analysis.featureType}
 
-## Summary
 ${analysis.summary}
 
-## Implementation Guide
+## Tasks
 
 ### UI Tasks
 ${uiList}
 
-### Development Tasks
+### Dev Tasks
 ${devList}
 
-## Developer Notes
-${ticketData.devNotes || 'No developer notes provided.'}
+## QA Acceptance
+${ticketData.qaAcceptance || '- Verify all tasks are completed and tested\n- Code follows project conventions\n- No regressions introduced'}
 
-## Resources
+## Edge Cases & Pitfalls
+- Handle empty / null data gracefully
+- Validate user inputs at system boundaries
+- Consider loading and error states in the UI
+
+## Testing Strategy
+- Unit tests for new business logic
+- Integration tests for API / data layer changes
+- Manual verification against QA acceptance criteria above
+
+## References
 ${figmaLinks}
 ${ticketRef}
 `;

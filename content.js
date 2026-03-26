@@ -1,5 +1,5 @@
 ﻿/* ================================================================
-   Ticket Copilot — Content Script
+   Ticket Analyser — Content Script
    Runs on: Jira (cloud), GitHub Issues/PRs, Linear
    Responsibilities:
      1. Detect which ticket platform is active
@@ -47,7 +47,11 @@
     document.getElementById('tc-fab')?.remove();
     closePanel();
     ticketData = null;
-    if (detectPlatform()) setTimeout(maybeInjectButton, 2500);
+    spGh.loaded = false;
+    // Only re-inject if we're still on a ticket page
+    if (detectPlatform()) {
+      setTimeout(maybeInjectButton, 2500);
+    }
   }
 
   // ── FAB injection ───────────────────────────────────────────
@@ -57,14 +61,11 @@
 
   function maybeInjectButton() {
     if (document.getElementById('tc-fab')) return;
-    // Gate: only inject when there's actually ticket content on the page
-    const hasContent = Boolean(
-      document.querySelector('h1') ||
-      document.querySelector('[data-testid*="summary"]') ||
-      document.querySelector('.gh-header-title') ||
-      document.querySelector('[data-linear]')
-    );
-    if (!hasContent) return;
+    // Only inject when we're on a recognized ticket page
+    if (!detectPlatform()) return;
+    // Gate: ensure there's actual ticket content (title) on the page
+    const data = extractTicketData();
+    if (!data || !data.title) return;
     injectFAB();
   }
 
@@ -72,13 +73,13 @@
     const fab = document.createElement('button');
     fab.id = 'tc-fab';
     fab.className = 'tc-fab';
-    fab.title = 'Open Ticket Copilot';
+    fab.title = 'Open Ticket Analyser';
     fab.setAttribute('aria-label', 'GitHub Copilot — Analyze ticket');
     fab.innerHTML = `
       <svg class="tc-fab-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
         <path d="M12 .5C5.37.5 0 5.78 0 12.292c0 5.211 3.438 9.63 8.205 11.188.6.111.82-.254.82-.567 0-.28-.01-1.022-.015-2.005-3.338.711-4.042-1.582-4.042-1.582-.546-1.361-1.333-1.723-1.333-1.723-1.09-.731.083-.716.083-.716 1.205.082 1.838 1.215 1.838 1.215 1.07 1.803 2.809 1.282 3.495.981.108-.763.417-1.282.76-1.577-2.665-.295-5.466-1.309-5.466-5.827 0-1.287.465-2.339 1.235-3.164-.135-.298-.54-1.497.105-3.121 0 0 1.005-.316 3.3 1.209A11.616 11.616 0 0 1 12 6.32c1.02.005 2.047.136 3.006.398 2.28-1.525 3.285-1.209 3.285-1.209.645 1.624.24 2.823.12 3.121.765.825 1.23 1.877 1.23 3.164 0 4.53-2.805 5.527-5.475 5.817.42.354.81 1.077.81 2.182 0 1.578-.015 2.846-.015 3.229 0 .309.21.678.825.56C20.565 21.917 24 17.495 24 12.292 24 5.78 18.627.5 12 .5z"/>
       </svg>
-      <span>Copilot</span>
+      <span>Auto ticket analyser</span>
     `;
     fab.addEventListener('click', openExtensionPopup);
     document.body.appendChild(fab);
@@ -133,7 +134,7 @@
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M12 .5C5.37.5 0 5.78 0 12.292c0 5.211 3.438 9.63 8.205 11.188.6.111.82-.254.82-.567 0-.28-.01-1.022-.015-2.005-3.338.711-4.042-1.582-4.042-1.582-.546-1.361-1.333-1.723-1.333-1.723-1.09-.731.083-.716.083-.716 1.205.082 1.838 1.215 1.838 1.215 1.07 1.803 2.809 1.282 3.495.981.108-.763.417-1.282.76-1.577-2.665-.295-5.466-1.309-5.466-5.827 0-1.287.465-2.339 1.235-3.164-.135-.298-.54-1.497.105-3.121 0 0 1.005-.316 3.3 1.209A11.616 11.616 0 0 1 12 6.32c1.02.005 2.047.136 3.006.398 2.28-1.525 3.285-1.209 3.285-1.209.645 1.624.24 2.823.12 3.121.765.825 1.23 1.877 1.23 3.164 0 4.53-2.805 5.527-5.475 5.817.42.354.81 1.077.81 2.182 0 1.578-.015 2.846-.015 3.229 0 .309.21.678.825.56C20.565 21.917 24 17.495 24 12.292 24 5.78 18.627.5 12 .5z"/>
           </svg>
-          <span>Ticket Copilot</span>
+          <span>Ticket Analyser</span>
         </div>
         <button id="tc-panel-close" class="tc-icon-btn" aria-label="Close panel">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
@@ -150,7 +151,45 @@
     `;
     document.body.appendChild(panel);
     document.getElementById('tc-panel-close').addEventListener('click', closePanel);
+    enablePanelDrag(panel);
     return panel;
+  }
+
+  // ── Make panel draggable by header ──────────────────────────
+  function enablePanelDrag(panel) {
+    const header = panel.querySelector('.tc-panel-header');
+    let dragging = false, startX, startY, startLeft, startTop;
+
+    header.addEventListener('mousedown', (e) => {
+      // Don't drag when clicking buttons inside header
+      if (e.target.closest('button')) return;
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = panel.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+      // Switch from right/top positioning to left/top for free movement
+      panel.style.left = startLeft + 'px';
+      panel.style.top = startTop + 'px';
+      panel.style.right = 'auto';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      let newLeft = startLeft + dx;
+      let newTop = startTop + dy;
+      // Keep panel within viewport
+      newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - 100));
+      newTop = Math.max(0, Math.min(newTop, window.innerHeight - 50));
+      panel.style.left = newLeft + 'px';
+      panel.style.top = newTop + 'px';
+    });
+
+    document.addEventListener('mouseup', () => { dragging = false; });
   }
 
   // ── Ticket data extraction ──────────────────────────────────
@@ -191,6 +230,8 @@
 
     let scope = '';
     let devNotes = '';
+    let keyDetails = '';
+    let qaAcceptance = '';
     document
       .querySelectorAll('[data-testid*="customfield"], .customfield, .field-group, [class*="sc-custom-field"]')
       .forEach((field) => {
@@ -202,9 +243,11 @@
         ).trim();
         if (/\bscope\b/.test(label) && value) scope = value;
         if (/dev\s*notes?|developer\s*notes?|implementation\s*notes?/.test(label) && value) devNotes = value;
+        if (/key\s*details?|general\s*details?|general\b/.test(label) && value) keyDetails = value;
+        if (/qa\s*accept(ance|ence)?|quality\s*assurance|test\s*criteria|qa\s*criteria/.test(label) && value) qaAcceptance = value;
       });
 
-    const allText = [description, scope, devNotes].join(' ');
+    const allText = [description, scope, devNotes, keyDetails, qaAcceptance].join(' ');
     const figmaUrls = extractFigmaUrls(allText);
 
     const attachmentImageUrls = [
@@ -213,7 +256,7 @@
     ];
     const comments = extractJiraComments();
 
-    return { platform: 'jira', id, title, type, description, scope, devNotes, figmaUrls, attachmentImageUrls, comments, url: window.location.href };
+    return { platform: 'jira', id, title, type, description, scope, devNotes, keyDetails, qaAcceptance, figmaUrls, attachmentImageUrls, comments, url: window.location.href };
   }
 
   function extractGitHub() {
@@ -249,13 +292,15 @@
 
     const scope = extractSection(description, 'scope|acceptance criteria');
     const devNotes = extractSection(description, 'dev notes|developer notes|implementation notes|technical notes|notes for dev');
+    const keyDetails = extractSection(description, 'key details|general details|general|details');
+    const qaAcceptance = extractSection(description, 'qa accept(ance|ence)|quality assurance|test criteria|qa criteria|qa');
 
     const figmaUrls = extractFigmaUrls(description);
 
     const attachmentImageUrls = extractImgSrcs(bodyEl);
     const comments = extractGitHubComments(bodyEl);
 
-    return { platform: 'github', id, title, type, description, scope, devNotes, figmaUrls, attachmentImageUrls, comments, url: window.location.href, owner, repo: repoName };
+    return { platform: 'github', id, title, type, description, scope, devNotes, keyDetails, qaAcceptance, figmaUrls, attachmentImageUrls, comments, url: window.location.href, owner, repo: repoName };
   }
 
   function extractLinear() {
@@ -276,13 +321,15 @@
 
     const scope = extractSection(description, 'scope|acceptance criteria');
     const devNotes = extractSection(description, 'dev notes|developer notes|implementation|technical');
+    const keyDetails = extractSection(description, 'key details|general details|general|details');
+    const qaAcceptance = extractSection(description, 'qa accept(ance|ence)|quality assurance|test criteria|qa criteria|qa');
 
     const figmaUrls = extractFigmaUrls(description);
 
     const attachmentImageUrls = extractImgSrcs(bodyEl);
     const comments = extractLinearComments();
 
-    return { platform: 'linear', id, title, type: guessTypeFromTitle(title), description, scope, devNotes, figmaUrls, attachmentImageUrls, comments, url: window.location.href };
+    return { platform: 'linear', id, title, type: guessTypeFromTitle(title), description, scope, devNotes, keyDetails, qaAcceptance, figmaUrls, attachmentImageUrls, comments, url: window.location.href };
   }
 
   // ── Comment & image extraction helpers ─────────────────────
@@ -407,7 +454,7 @@
   }
 
   // ── Analysis & rendering ────────────────────────────────────
-  async function startAnalysis(panel) {
+  async function startAnalysis(panel, forceRefresh = false) {
     ticketData = extractTicketData();
     spGh.loaded = false; // reset so Workflows tab re-initialises after re-render
     const body = document.getElementById('tc-panel-body');
@@ -418,13 +465,15 @@
     }
 
     // Check cache first — skip AI call entirely if a fresh result exists
-    const cached = await peekCache(ticketData);
-    if (cached) {
-      ticketData._analysis = cached;
-      const taskStates = await loadTaskStates(ticketData);
-      applyTaskStates(cached, taskStates);
-      renderResults(body, ticketData, cached);
-      return;
+    if (!forceRefresh) {
+      const cached = await peekCache(ticketData);
+      if (cached) {
+        ticketData._analysis = cached;
+        const taskStates = await loadTaskStates(ticketData);
+        applyTaskStates(cached, taskStates);
+        renderResults(body, ticketData, cached);
+        return;
+      }
     }
 
     // Collect images from description/attachments and comments for vision analysis
@@ -445,6 +494,7 @@
       const analysis = await chrome.runtime.sendMessage({
         type: 'ANALYZE_TICKET',
         payload: ticketData,
+        forceRefresh: forceRefresh,
       });
       if (analysis.error) throw new Error(analysis.error);
       ticketData._analysis = analysis;
@@ -567,6 +617,20 @@
 
       <!-- Skill file pane -->
       <div class="tc-pane tc-pane--hidden" id="tc-pane-skill">
+        <!-- Detected codebase tech stack section -->
+        ${buildCodebaseHtml(analysis._codebase)}
+
+        <!-- Repo skill files section -->
+        ${buildRepoSkillsHtml(analysis._repoSkillFiles || [])}
+
+        <!-- Generated skill file -->
+        <div class="tc-skill-gen-header">
+          <span class="tc-label">Generated Skill File</span>
+          <button class="tc-btn tc-btn--sm tc-btn--outline" id="tc-regen-skill">
+            <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor"><path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/></svg>
+            Regenerate
+          </button>
+        </div>
         <div class="tc-skill-bar">
           <span class="tc-skill-name">${escHtml(analysis.skillFileName || 'feature')}.md</span>
           <div class="tc-skill-actions">
@@ -617,8 +681,10 @@
             </button>
           </div>
           <div id="tc-gh-issue-created" class="tc-gh-issue-created tc-pane--hidden">
-            <svg viewBox="0 0 16 16" width="13" height="13" fill="#3fb950"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.749.749 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/></svg>
-            <span>Issue created: </span><a id="tc-gh-issue-link" href="#" target="_blank" rel="noopener noreferrer" class="tc-gh-issue-created-link"></a>
+            <div class="tc-issue-created-top">
+              <svg viewBox="0 0 16 16" width="13" height="13" fill="#3fb950"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.749.749 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/></svg>
+              <span>Issue created: </span><a id="tc-gh-issue-link" href="#" target="_blank" rel="noopener noreferrer" class="tc-gh-issue-created-link"></a>
+            </div>
           </div>
           <div class="tc-gh-sub-tabs">
             <button class="tc-gh-sub-tab tc-gh-sub-tab--act" data-ghpanel="workflows">Workflows</button>
@@ -726,6 +792,13 @@
       showToast('Skill file downloaded!');
     });
 
+    // Regenerate skill file (force fresh analysis)
+    document.getElementById('tc-regen-skill')?.addEventListener('click', () => {
+      showToast('Regenerating skill file…');
+      const panel = document.getElementById('tc-panel');
+      if (panel) startAnalysis(panel, true);
+    });
+
     // Copy suggestion code buttons
     body.querySelectorAll('.tc-copy-snippet').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -737,7 +810,7 @@
     // Re-analyze
     document.getElementById('tc-reanalyze')?.addEventListener('click', () => {
       const panel = document.getElementById('tc-panel');
-      if (panel) startAnalysis(panel);
+      if (panel) startAnalysis(panel, true);
     });
 
     // Clear cache
@@ -747,8 +820,53 @@
       await new Promise((r) => chrome.storage.local.remove([key], r));
       showToast('Cache cleared!');
       const panel = document.getElementById('tc-panel');
-      if (panel) startAnalysis(panel);
+      if (panel) startAnalysis(panel, true);
     });
+  }
+
+  function buildCodebaseHtml(codebase) {
+    if (!codebase || (!codebase.stack.length && !codebase.languages.length)) return '';
+    const langTags = codebase.languages.slice(0, 5).map((l) =>
+      `<span class="tc-cb-tag tc-cb-tag--lang">${escHtml(l.lang)} <small>${l.pct}%</small></span>`
+    ).join('');
+    const stackTags = codebase.stack.map((s) =>
+      `<span class="tc-cb-tag tc-cb-tag--fw">${escHtml(s)}</span>`
+    ).join('');
+    const fileTypeTags = (codebase.fileTypes || []).slice(0, 10).map((ft) =>
+      `<span class="tc-cb-tag tc-cb-tag--ft">${escHtml(ft)}</span>`
+    ).join('');
+    return `
+      <div class="tc-codebase-section">
+        <div class="tc-codebase-header">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="#8b949e"><path d="M4.72 3.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L7.44 7 4.72 4.28a.75.75 0 0 1 0-1.06m4.25 7.5a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75"/></svg>
+          <span class="tc-codebase-title">Detected Tech Stack</span>
+        </div>
+        <div class="tc-codebase-info">
+          ${langTags ? `<div class="tc-cb-row"><span class="tc-cb-label">Languages</span><div class="tc-cb-tags">${langTags}</div></div>` : ''}
+          ${stackTags ? `<div class="tc-cb-row"><span class="tc-cb-label">Frameworks & Tools</span><div class="tc-cb-tags">${stackTags}</div></div>` : ''}
+          ${fileTypeTags ? `<div class="tc-cb-row"><span class="tc-cb-label">File Types</span><div class="tc-cb-tags">${fileTypeTags}</div></div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function buildRepoSkillsHtml(files) {
+    if (!files || !files.length) return '';
+    const items = files.map((f) => `
+      <details class="tc-repo-skill-item">
+        <summary class="tc-repo-skill-path">
+          <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" style="color:#8b949e;flex-shrink:0"><path d="M3.75 1.5a.25.25 0 0 0-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25V6H9.75A1.75 1.75 0 0 1 8 4.25V1.5Zm5.75.56v2.19c0 .138.112.25.25.25h2.19ZM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25Z"/></svg>
+          ${escHtml(f.path)}
+        </summary>
+        <pre class="tc-repo-skill-content">${escHtml(f.content)}</pre>
+      </details>`).join('');
+    return `
+      <div class="tc-repo-skills-section">
+        <div class="tc-repo-skills-header">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="#8b949e"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8z"/></svg>
+          <span class="tc-repo-skills-title">Repo Skill Files</span>
+        </div>
+        ${items}
+      </div>`;
   }
 
   function renderTask(task) {
@@ -1238,19 +1356,13 @@
         throw new Error(data.message || `GitHub API error ${res.status}`);
       }
 
-      // Step 2: Assign to Copilot (best-effort — silently ignored if not supported)
-      await fetch(`https://api.github.com/repos/${spGh.owner}/${spGh.repo}/issues/${data.number}/assignees`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ assignees: ['Copilot'] }),
-      }).catch(() => { /* not supported on this repo — ignore */ });
-
       bar.style.pointerEvents = '';
       bar.classList.add('tc-pane--hidden');
       const banner = document.getElementById('tc-gh-issue-created');
       banner?.classList.remove('tc-pane--hidden');
       const link = document.getElementById('tc-gh-issue-link');
       if (link) { link.href = data.html_url; link.textContent = `#${data.number} — ${data.title}`; }
+
       showToast(`Issue #${data.number} created!`);
       spLoadIssueList();
     } catch (err) {
@@ -1261,10 +1373,13 @@
   }
 
   function spBuildFallbackIssueBody(analysis, td) {
-    const uiList = (analysis.uiTasks || []).map((t) => `- [ ] **${t.title}**: ${t.description}`).join('\n') || '- [ ] No UI tasks';
-    const devList = (analysis.devTasks || []).map((t) => `- [ ] **${t.title}**: ${t.description}`).join('\n') || '- [ ] No dev tasks';
+    const uiList = (analysis.uiTasks || []).map((t) => `- [ ] **${t.id} ${t.title}** [${t.priority || 'medium'}]: ${t.description}`).join('\n') || '- [ ] No UI tasks';
+    const devList = (analysis.devTasks || []).map((t) => `- [ ] **${t.id} ${t.title}** [${t.priority || 'medium'}]: ${t.description}`).join('\n') || '- [ ] No dev tasks';
     const ref = td.url ? `[${td.id || 'Ticket'}](${td.url})` : td.id || 'N/A';
-    return `### Summary\n${analysis.summary}\n\n### Tasks\n**UI Tasks**\n${uiList}\n\n**Dev Tasks**\n${devList}\n\n### Acceptance Criteria\n- All tasks above are completed and reviewed\n- Code follows project conventions outlined in the skill file\n- Feature is tested and approved\n\n### Technical Notes\n- Ticket reference: ${ref}\n- Complexity: ${analysis.complexity}\n- Feature type: ${analysis.featureType}\n- Suggested branch: \`${analysis.suggestedBranch || 'feat/implementation'}\`\n\n> This issue was generated by Ticket Copilot.`;
+    const qaList = td.qaAcceptance
+      ? td.qaAcceptance.split(/\n/).map((l) => l.trim()).filter(Boolean).map((l) => l.startsWith('-') ? `${l}` : `- ${l}`).join('\n')
+      : '- All tasks above are completed and reviewed\n- Code follows project conventions\n- No regressions introduced';
+    return `### Summary\n${analysis.summary}\n\n### Ticket Context\n- **Type**: ${analysis.ticketType}\n- **Complexity**: ${analysis.complexity}\n- **Feature**: ${analysis.featureType}${td.keyDetails ? `\n- **Key Details**: ${td.keyDetails}` : ''}\n\n### Constraints & Rules\n${td.devNotes ? `- Developer Notes: ${td.devNotes}` : '- Follow existing project conventions'}${td.scope ? `\n- Scope: ${td.scope}` : ''}\n\n### Tasks\n**UI Tasks**\n${uiList}\n\n**Dev Tasks**\n${devList}\n\n### QA Acceptance\n${qaList}\n\n### Edge Cases\n- Handle empty / null data gracefully\n- Validate user inputs at system boundaries\n- Consider loading and error states\n\n### Testing Strategy\n- Unit tests for new business logic\n- Integration tests for API / data layer changes\n- Manual verification against QA acceptance criteria\n\n### References\n- Ticket: ${ref}\n- Suggested branch: \`${analysis.suggestedBranch || 'feat/implementation'}\`\n\n> This issue was generated by Ticket Analyser.`;
   }
 
   function spGhJSON(path) {

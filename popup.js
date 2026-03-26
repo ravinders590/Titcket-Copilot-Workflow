@@ -1,5 +1,5 @@
 /* ================================================================
-   Ticket Copilot — Popup Logic
+   Ticket Analyser — Popup Logic
    ================================================================ */
 
 document.addEventListener('DOMContentLoaded', init);
@@ -195,6 +195,49 @@ function renderResults(data, analysis) {
   renderTaskList('#uiTaskList', analysis.uiTasks || [], 'ui');
   renderTaskList('#devTaskList', analysis.devTasks || [], 'dev');
 
+  // Detected codebase tech stack
+  const cbSection = $('#codebaseSection');
+  const cbInfo = $('#codebaseInfo');
+  const codebase = analysis._codebase;
+  if (codebase && (codebase.stack.length || codebase.languages.length)) {
+    const langTags = codebase.languages.slice(0, 5).map((l) =>
+      `<span class="cb-tag cb-tag--lang">${escHtml(l.lang)} <small>${l.pct}%</small></span>`
+    ).join('');
+    const stackTags = codebase.stack.map((s) =>
+      `<span class="cb-tag cb-tag--fw">${escHtml(s)}</span>`
+    ).join('');
+    const fileTypeTags = (codebase.fileTypes || []).slice(0, 10).map((ft) =>
+      `<span class="cb-tag cb-tag--ft">${escHtml(ft)}</span>`
+    ).join('');
+    cbInfo.innerHTML = `
+      ${langTags ? `<div class="cb-row"><span class="cb-label">Languages</span><div class="cb-tags">${langTags}</div></div>` : ''}
+      ${stackTags ? `<div class="cb-row"><span class="cb-label">Frameworks & Tools</span><div class="cb-tags">${stackTags}</div></div>` : ''}
+      ${fileTypeTags ? `<div class="cb-row"><span class="cb-label">File Types</span><div class="cb-tags">${fileTypeTags}</div></div>` : ''}
+    `;
+    cbSection.classList.remove('hidden');
+  } else {
+    cbSection.classList.add('hidden');
+  }
+
+  // Repo skill files — show loaded repo files first
+  const repoSection = $('#repoSkillsSection');
+  const repoList = $('#repoSkillsList');
+  const repoFiles = analysis._repoSkillFiles || [];
+  if (repoFiles.length) {
+    repoList.innerHTML = repoFiles.map((f) => `
+      <details class="repo-skill-item">
+        <summary class="repo-skill-path">
+          <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" style="color:#8b949e;flex-shrink:0"><path d="M3.75 1.5a.25.25 0 0 0-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25V6H9.75A1.75 1.75 0 0 1 8 4.25V1.5Zm5.75.56v2.19c0 .138.112.25.25.25h2.19ZM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25Z"/></svg>
+          ${escHtml(f.path)}
+        </summary>
+        <pre class="repo-skill-content">${escHtml(f.content)}</pre>
+      </details>
+    `).join('');
+    repoSection.classList.remove('hidden');
+  } else {
+    repoSection.classList.add('hidden');
+  }
+
   // Skill File
   const fname = sanitizeFilename(analysis.skillFileName || 'feature');
   $('#skillFilename').textContent = `${fname}.md`;
@@ -221,6 +264,12 @@ function renderResults(data, analysis) {
   $('#btnDownloadSkill').onclick = () => {
     downloadText(analysis.skillFileContent || '', `${fname}.md`);
     toast('Skill file downloaded!', 'success');
+  };
+
+  // Wire regenerate button — re-run full analysis (force refresh)
+  $('#btnRegenerateSkill').onclick = () => {
+    toast('Regenerating skill file…', 'info');
+    runAnalysis(true);
   };
 
   showState('results');
@@ -305,10 +354,6 @@ function buildTaskHtml(task, type) {
   const pc = prioColors[task.priority] || '#8b949e';
   return `
     <div class="task-item${isDone ? ' done' : ''}" data-id="${escHtml(task.id)}" data-type="${type}">
-      <label class="check-wrap" aria-label="Toggle task">
-        <input type="checkbox" class="task-check"${isDone ? ' checked' : ''} />
-        <span class="checkmark"></span>
-      </label>
       <div class="task-body">
         <div class="task-meta">
           <span class="task-id">${escHtml(task.id)}</span>
@@ -521,7 +566,7 @@ function showIssueConfirm(ticketData, analysis, owner, repo, token) {
   const bar = $('#issueActionBar');
   // Swap the action bar into confirmation mode
   bar.innerHTML = `
-    <span class="issue-confirm-msg">Create issue in <strong>${escHtml(owner)}/${escHtml(repo)}</strong> and assign to Copilot?</span>
+    <span class="issue-confirm-msg">Create issue in <strong>${escHtml(owner)}/${escHtml(repo)}</strong>?</span>
     <div class="issue-confirm-btns">
       <button id="btnIssueConfirmYes" class="btn btn-sm btn-primary">Yes, create</button>
       <button id="btnIssueConfirmNo" class="btn btn-sm btn-outline">Cancel</button>
@@ -572,18 +617,6 @@ async function handleCreateGhIssue(ticketData, analysis, owner, repo, token) {
 
     const issue = data;
 
-    // Step 2: Assign to Copilot (best-effort — silently ignored if not supported)
-    await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issue.number}/assignees`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ assignees: ['Copilot'] }),
-    }).catch(() => { /* not supported on this repo — ignore */ });
-
     bar.style.pointerEvents = '';
     $('#issueActionBar').classList.add('hidden');
     const banner = $('#issueCreatedBanner');
@@ -591,6 +624,7 @@ async function handleCreateGhIssue(ticketData, analysis, owner, repo, token) {
     const link = $('#issueCreatedLink');
     link.href = issue.html_url;
     link.textContent = `#${issue.number} \u2014 ${issue.title}`;
+
     toast(`Issue #${issue.number} created successfully!`, 'success');
     // Refresh the open issues list to include the newly created issue
     loadGhOpenIssues(true);
@@ -603,16 +637,19 @@ async function handleCreateGhIssue(ticketData, analysis, owner, repo, token) {
 
 function buildFallbackIssueBody(analysis, ticketData) {
   const uiList = (analysis.uiTasks || [])
-    .map((t) => `- [ ] **${t.title}**: ${t.description}`)
+    .map((t) => `- [ ] **${t.id} ${t.title}** [${t.priority || 'medium'}]: ${t.description}`)
     .join('\n') || '- [ ] No UI tasks';
   const devList = (analysis.devTasks || [])
-    .map((t) => `- [ ] **${t.title}**: ${t.description}`)
+    .map((t) => `- [ ] **${t.id} ${t.title}** [${t.priority || 'medium'}]: ${t.description}`)
     .join('\n') || '- [ ] No dev tasks';
   const ref = ticketData.url
     ? `[${ticketData.id || 'Ticket'}](${ticketData.url})`
     : ticketData.id || 'N/A';
+  const qaList = ticketData.qaAcceptance
+    ? ticketData.qaAcceptance.split(/\n/).map((l) => l.trim()).filter(Boolean).map((l) => l.startsWith('-') ? `${l}` : `- ${l}`).join('\n')
+    : '- All tasks above are completed and reviewed\n- Code follows project conventions\n- No regressions introduced';
 
-  return `### Summary\n${analysis.summary}\n\n### Tasks\n**UI Tasks**\n${uiList}\n\n**Dev Tasks**\n${devList}\n\n### Acceptance Criteria\n- All tasks above are completed and reviewed\n- Code follows project conventions outlined in the skill file\n- Feature is tested and approved\n\n### Technical Notes\n- Ticket reference: ${ref}\n- Complexity: ${analysis.complexity}\n- Feature type: ${analysis.featureType}\n- Suggested branch: \`${analysis.suggestedBranch || 'feat/implementation'}\`\n\n> This issue was generated by Ticket Copilot. Assign @github-copilot for AI-assisted implementation.`;
+  return `### Summary\n${analysis.summary}\n\n### Ticket Context\n- **Type**: ${analysis.ticketType}\n- **Complexity**: ${analysis.complexity}\n- **Feature**: ${analysis.featureType}${ticketData.keyDetails ? `\n- **Key Details**: ${ticketData.keyDetails}` : ''}\n\n### Constraints & Rules\n${ticketData.devNotes ? `- Developer Notes: ${ticketData.devNotes}` : '- Follow existing project conventions'}${ticketData.scope ? `\n- Scope: ${ticketData.scope}` : ''}\n\n### Tasks\n**UI Tasks**\n${uiList}\n\n**Dev Tasks**\n${devList}\n\n### QA Acceptance\n${qaList}\n\n### Edge Cases\n- Handle empty / null data gracefully\n- Validate user inputs at system boundaries\n- Consider loading and error states\n\n### Testing Strategy\n- Unit tests for new business logic\n- Integration tests for API / data layer changes\n- Manual verification against QA acceptance criteria\n\n### References\n- Ticket: ${ref}\n- Suggested branch: \`${analysis.suggestedBranch || 'feat/implementation'}\`\n\n> This issue was generated by Ticket Analyser. Assign @github-copilot for AI-assisted implementation.`;
 }
 
 // ================================================================
@@ -835,15 +872,23 @@ function populateGhIssuesPanel() {
 
   const refreshBtn = $('#btnRefreshOpenIssues');
   if (refreshBtn) {
-    refreshBtn.onclick = null;
-    refreshBtn.addEventListener('click', () => loadGhOpenIssues(true));
+    refreshBtn.onclick = () => loadGhOpenIssues(true);
   }
 }
 
 async function loadGhOpenIssues(forceRefresh = false) {
   const list = $('#ghOpenIssuesList');
   const countEl = $('#ghOpenIssuesCount');
-  if (!list || !ghCfg.owner || !ghCfg.repo || !ghCfg.token) return;
+  if (!list) return;
+
+  // Ensure GitHub config is resolved before fetching
+  if (!ghCfg.token || !ghCfg.owner || !ghCfg.repo) {
+    await resolveGitHubConfig();
+  }
+  if (!ghCfg.owner || !ghCfg.repo || !ghCfg.token) return;
+
+  const refreshBtn = $('#btnRefreshOpenIssues');
+  if (refreshBtn) refreshBtn.classList.add('spinning');
 
   list.innerHTML = '<p class="task-empty">Loading issues…</p>';
 
@@ -866,6 +911,8 @@ async function loadGhOpenIssues(forceRefresh = false) {
     realIssues.forEach((issue) => list.appendChild(buildOpenIssueRow(issue)));
   } catch (err) {
     list.innerHTML = `<p class="task-empty" style="color:var(--red)">${escHtml(err.message)}</p>`;
+  } finally {
+    if (refreshBtn) refreshBtn.classList.remove('spinning');
   }
 }
 

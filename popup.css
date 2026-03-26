@@ -1,5 +1,5 @@
 /* ================================================================
-   Ticket Copilot — Popup CSS
+   Ticket Analyser — Popup CSS
    ================================================================ */
 
 /* ===== Variables ===== */
@@ -123,6 +123,7 @@ body {
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.spinning { animation: spin .6s linear infinite; }
 
 /* ===== Error State ===== */
 .error-state {
@@ -343,6 +344,77 @@ body {
 }
 
 /* ===== Skill File Pane ===== */
+/* ===== Repo Skill Files ===== */
+.repo-skills-section {
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.repo-skills-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+.repo-skills-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.repo-skills-list { padding: 0; }
+.repo-skill-item {
+  border-bottom: 1px solid var(--border);
+}
+.repo-skill-item:last-child {
+  border-bottom: none;
+}
+.repo-skill-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--blue);
+  cursor: pointer;
+  user-select: none;
+}
+.repo-skill-path:hover { background: rgba(88,166,255,.06); }
+.repo-skill-content {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 10px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--text2);
+  background: var(--bg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  max-height: 200px;
+  line-height: 1.5;
+  border-top: 1px solid var(--border);
+}
+
+/* ===== Skill Generated Header ===== */
+.skill-generated-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.skill-generated-header .section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
 .skill-bar {
   display: flex;
   align-items: center;
@@ -889,8 +961,8 @@ select.gh-input option { background: var(--bg2); color: var(--text); }
 }
 .issue-created-banner {
   display: flex;
-  align-items: center;
-  gap: 7px;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 10px;
   margin-top: 8px;
   background: rgba(63,185,80,.1);
@@ -898,6 +970,11 @@ select.gh-input option { background: var(--bg2); color: var(--text); }
   border-radius: var(--r-sm);
   font-size: 12px;
   color: var(--text2);
+}
+.issue-created-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 .issue-created-banner a {
   color: var(--blue);
@@ -908,6 +985,65 @@ select.gh-input option { background: var(--bg2); color: var(--text); }
   font-weight: 500;
 }
 .issue-created-banner a:hover { text-decoration: underline; }
+
+/* ===== Codebase Detection ===== */
+.codebase-section {
+  background: rgba(88,166,255,.06);
+  border: 1px solid rgba(88,166,255,.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.codebase-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.codebase-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.codebase-info { display: flex; flex-direction: column; gap: 6px; }
+.cb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.cb-label {
+  font-size: 10px;
+  color: var(--text3);
+  min-width: 100px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.cb-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.cb-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.cb-tag small { opacity: .65; font-size: 9px; }
+.cb-tag--lang {
+  background: rgba(139,148,158,.12);
+  color: #c9d1d9;
+  border: 1px solid rgba(139,148,158,.2);
+}
+.cb-tag--fw {
+  background: rgba(88,166,255,.1);
+  color: #58a6ff;
+  border: 1px solid rgba(88,166,255,.2);
+}
+.cb-tag--ft {
+  background: rgba(63,185,80,.08);
+  color: #3fb950;
+  border: 1px solid rgba(63,185,80,.15);
+}
+
+
 
 /* ===== Open Issues List ===== */
 .gh-open-issues-section {
